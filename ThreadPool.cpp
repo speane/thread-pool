@@ -24,6 +24,7 @@ public:
 			threads.push_back(tempThread);
 		}
 
+		freeThreadsCounter = threadCount;
 		closed = false;
 
 		logInfo(std::to_string(threadCount) + " threads started\n");
@@ -34,6 +35,10 @@ public:
 
 		LPTHREAD_START_ROUTINE task = getTask(taskNumber);
 		tasks.push(task);
+
+		if (tasks.size() > freeThreadsCounter) {
+			logError("all threads are busy, waiting for a thread...\n");
+		}
 
 		taskSyncMutex.unlock();
 	}
@@ -51,6 +56,7 @@ private:
 	std::queue<LPTHREAD_START_ROUTINE> tasks;
 	std::mutex taskSyncMutex;
 	bool closed;
+	int freeThreadsCounter;
 	
 	static DWORD WINAPI threadWork(LPVOID lpParam) {
 		const long THREAD_WAIT_TIME = 100;
@@ -62,7 +68,9 @@ private:
 		while (!threadPool->isClosed()) {
 			currentTask = threadPool->getNextTask();
 			if (currentTask != NULL) {
+				threadPool->decreaseFreeThreadsCounter();
 				currentTask(lpParam);
+				threadPool->increaseFreeThreadsCounter();
 			}
 			else {
 				Sleep(THREAD_WAIT_TIME);
@@ -87,6 +95,22 @@ private:
 		taskSyncMutex.unlock();
 
 		return task;
+	}
+
+	void decreaseFreeThreadsCounter() {
+		taskSyncMutex.lock();
+
+		freeThreadsCounter--;
+
+		taskSyncMutex.unlock();
+	}
+
+	void increaseFreeThreadsCounter() {
+		taskSyncMutex.lock();
+
+		freeThreadsCounter++;
+
+		taskSyncMutex.unlock();
 	}
 
 	bool isClosed() {
