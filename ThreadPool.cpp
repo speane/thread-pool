@@ -10,8 +10,8 @@
 class ThreadPool {
 public:
 	ThreadPool(int count) {
-		if (count < 0) {
-			logWarn("Thread pool size < 0");
+		if (count < 1) {
+			logWarn("thread pool size < 1\n");
 			threadCount = DEFAULT_THREAD_COUNT;
 		}
 		else {
@@ -26,7 +26,7 @@ public:
 
 		closed = false;
 
-		logInfo(threadCount + " threads started");
+		logInfo(std::to_string(threadCount) + " threads started\n");
 	}
 
 	void addTask(int taskNumber) {
@@ -46,28 +46,33 @@ public:
 private:
 	const int DEFAULT_THREAD_COUNT = 1;
 
-	static int threadCount;
-	static std::vector<HANDLE> threads;
-	static std::queue<LPTHREAD_START_ROUTINE> tasks;
-	static std::mutex taskSyncMutex;
-	static bool closed;
+	int threadCount;
+	std::vector<HANDLE> threads;
+	std::queue<LPTHREAD_START_ROUTINE> tasks;
+	std::mutex taskSyncMutex;
+	bool closed;
 	
 	static DWORD WINAPI threadWork(LPVOID lpParam) {
-		logInfo("start thread " + getThreadIdString());
+		const long THREAD_WAIT_TIME = 100;
+		ThreadPool* threadPool = (ThreadPool*)lpParam;
+
+		logInfo("start thread " + getThreadIdString() + "\n");
 
 		LPTHREAD_START_ROUTINE currentTask;
-		while (true) {
-			currentTask = getNextTask();
+		while (!threadPool->isClosed()) {
+			currentTask = threadPool->getNextTask();
 			if (currentTask != NULL) {
 				currentTask(lpParam);
 			}
 			else {
-				Sleep(100);
+				Sleep(THREAD_WAIT_TIME);
 			}
 		}
+
+		return 0;
 	}
 
-	static LPTHREAD_START_ROUTINE getNextTask() {
+	LPTHREAD_START_ROUTINE getNextTask() {
 		taskSyncMutex.lock();
 
 		LPTHREAD_START_ROUTINE task;
@@ -79,30 +84,48 @@ private:
 			task = NULL;
 		}
 
+		taskSyncMutex.unlock();
+
 		return task;
+	}
+
+	bool isClosed() {
+		bool isClosed;
+		
+		taskSyncMutex.lock();
+
+		isClosed = closed;
 
 		taskSyncMutex.unlock();
+
+		return closed;
 	}
 
 	static std::string getThreadIdString() {
 		std::stringstream stringStream;
 		stringStream << std::this_thread::get_id();
-		std::string mystring = stringStream.str();
+		return stringStream.str();
 	}
 
 	static DWORD WINAPI task1(LPVOID lpParam) {
 		Sleep(1000);
-		logInfo("task1 executed");
+		logInfo("task1 executed\n");
+
+		return 0;
 	}
 
 	static DWORD WINAPI task2(LPVOID lpParam) {
 		Sleep(2000);
-		logInfo("task2 executed");
+		logInfo("task2 executed\n");
+
+		return 0;
 	}
 
 	static DWORD WINAPI task3(LPVOID lpParam) {
 		Sleep(3000);
-		logInfo("task3 executed");
+		logInfo("task3 executed\n");
+
+		return 0;
 	}
 	
 	LPTHREAD_START_ROUTINE getTask(int taskNumber) {
@@ -119,15 +142,15 @@ private:
 	}
 
 	static void logInfo(std::string message) {
-		std::cout << "[INFO]: " << message;
+		std::cout << "[INFO]: thread" + getThreadIdString() + ": " << message;
 	}
 
 	static void logWarn(std::string message) {
-		std::cout << "[WARN]: " << message;
+		std::cout << "[WARN]: thread" + getThreadIdString() + ": " << message;
 	}
 
 	static void logError(std::string message) {
-		std::cout << "[ERROR]: " << message;
+		std::cout << "[ERROR]: thread" + getThreadIdString() + ": " << message;
 	}
 };
 
@@ -141,10 +164,13 @@ int main()
 	ThreadPool* threadPool = new ThreadPool(threadPoolSize);
 
 	int taskNumber;
-	std::cout << "Please choose task to execute(1 - task1; 2 - task2; 3 - task3; 0 - exit)";
+	std::cout << "Please choose task to execute(1 - task1; 2 - task2; 3 - task3; other - exit)\n";
 	std::cin >> taskNumber;
-	while (taskNumber > 0 && taskNumber < 3) {
+	while (taskNumber > 0 && taskNumber < 4) {
 		threadPool->addTask(taskNumber);
+		std::cin >> taskNumber;
 	}
+
+	threadPool->dispose();
 }
 
